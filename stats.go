@@ -42,19 +42,13 @@ func Stats(w http.ResponseWriter, req *http.Request) {
 		jobs,
 	}
 
-	conn := Config.Pool.Get()
-	defer conn.Close()
+	conn := Config.Pool
 
-	conn.Send("multi")
-	conn.Send("get", Config.Namespace+"stat:processed")
-	conn.Send("get", Config.Namespace+"stat:failed")
-	r, err := conn.Do("exec")
+	var results []interface{}
+	results = append(results, conn.Get(Config.Namespace+"stat:processed").String())
+	results = append(results, conn.Get(Config.Namespace+"stat:failed").String())
 
-	if err != nil {
-		Logger.Println("couldn't retrieve stats:", err)
-	}
 
-	results := r.([]interface{})
 
 	if len(results) == 2 {
 		if results[0] != nil {

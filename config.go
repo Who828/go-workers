@@ -4,14 +4,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
+	"gopkg.in/redis.v3"
 )
 
 type config struct {
 	processId    string
 	Namespace    string
 	PollInterval int
-	Pool         *redis.Pool
+	Pool         *redis.ClusterClient
 	Fetch        func(queue string) Fetcher
 }
 
@@ -22,9 +22,6 @@ func Configure(options map[string]string) {
 	var namespace string
 	var pollInterval int
 
-	if options["server"] == "" {
-		panic("Configure requires a 'server' option, which identifies a Redis instance")
-	}
 	if options["process"] == "" {
 		panic("Configure requires a 'process' option, which uniquely identifies this instance")
 	}
@@ -46,33 +43,12 @@ func Configure(options map[string]string) {
 		options["process"],
 		namespace,
 		pollInterval,
-		&redis.Pool{
-			MaxIdle:     poolSize,
+		redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs: []string{options["servers"]},
+			PoolSize: poolSize,
 			IdleTimeout: 240 * time.Second,
-			Dial: func() (redis.Conn, error) {
-				c, err := redis.Dial("tcp", options["server"])
-				if err != nil {
-					return nil, err
-				}
-				if options["password"] != "" {
-					if _, err := c.Do("AUTH", options["password"]); err != nil {
-						c.Close()
-						return nil, err
-					}
-				}
-				if options["database"] != "" {
-					if _, err := c.Do("SELECT", options["database"]); err != nil {
-						c.Close()
-						return nil, err
-					}
-				}
-				return c, err
-			},
-			TestOnBorrow: func(c redis.Conn, t time.Time) error {
-				_, err := c.Do("PING")
-				return err
-			},
-		},
+			Password: options["password"],
+		}),
 		func(queue string) Fetcher {
 			return NewFetch(queue, make(chan *Msg), make(chan bool))
 		},
